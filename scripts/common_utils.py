@@ -20,7 +20,7 @@ from multimodal_rl.wrappers.frame_stack import FrameStack
 from multimodal_rl.wrappers.isaaclab_wrapper import IsaacLabWrapper
 
 # Import task modules to register environments
-from roto.tasks import baoding, bounce, find, peace  # noqa: F401
+from roto.tasks import baoding, bounce, find, peace, simgap  # noqa: F401
 from roto.tasks.robots import allegro, franka, orca, shadow, shadowlite  # noqa: F401
 
 

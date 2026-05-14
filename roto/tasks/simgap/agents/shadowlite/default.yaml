@@ -1,0 +1,24 @@
+# SimGap (Shadowlite) — data collection, no RL training.
+
+seed: 0
+
+observations:
+  obs_list:
+    - prop
+    - tactile
+  obs_stack: 1
+  tactile_cfg:
+    binary_tactile: false
+    binary_threshold: 0.01
+
+experiment:
+  directory: shadowlite_simgap
+  debug: 0
+  upload_videos: 0
+  save_checkpoints: 0
+  tb_log: false
+  wandb: 0
+
+trainer:
+  num_eval_envs: 0
+  max_global_timesteps_M: 0
