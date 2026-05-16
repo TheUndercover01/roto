@@ -13,6 +13,21 @@ import sys
 
 from isaaclab.app import AppLauncher
 
+import isaaclab_tasks  # noqa: F401
+from common_utils import (
+    LOG_PATH,
+    load_hand_task_agent_cfg,
+    make_env,
+    register_hand_task_to_hydra,
+    resolve_gym_env_id,
+    train_one_seed,
+    update_env_cfg,
+)
+from isaaclab.utils import update_dict
+from isaaclab_tasks.utils.hydra import register_task_to_hydra
+from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
+from multimodal_rl.tools.writer import Writer
+
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
@@ -45,20 +60,7 @@ sys.argv = [sys.argv[0]] + hydra_args
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import isaaclab_tasks  # noqa: F401
-from common_utils import (
-    LOG_PATH,
-    load_hand_task_agent_cfg,
-    make_env,
-    register_hand_task_to_hydra,
-    resolve_gym_env_id,
-    train_one_seed,
-    update_env_cfg,
-)
-from isaaclab.utils import update_dict
-from isaaclab_tasks.utils.hydra import register_task_to_hydra
-from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
-from multimodal_rl.tools.writer import Writer
+
 
 
 def main() -> None:
@@ -85,7 +87,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    #main()
     try:
         main()
     except Exception as err:

@@ -27,6 +27,8 @@ parser.add_argument("--seed", type=int, default=0, help="Trajectory seed; same s
 parser.add_argument("--duration_s", type=float, default=10.0, help="Rollout duration in seconds.")
 parser.add_argument("--output_dir", type=str, default="results/simgap", help="Where to write the NPZ.")
 parser.add_argument("--tag", type=str, default="sim", help="Filename prefix (e.g. 'sim' or 'real').")
+parser.add_argument("--replay_npz", type=str, default=None, help="Path to an existing NPZ file. Replays its stored 'actions' instead of generating a new trajectory (useful to verify hardware replay in sim).")
+parser.add_argument("--no_save", action="store_true", default=False, help="Skip saving the output NPZ (useful when just replaying for visual verification).")
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 parser.add_argument("--video", action="store_true", default=False, help="Unused; kept for make_env compatibility.")
 parser.add_argument("--video_length", type=int, default=200)
@@ -87,9 +89,15 @@ def main():
         device=device,
     )
 
+    replay_actions: torch.Tensor | None = None
+    if args_cli.replay_npz is not None:
+        stored = np.load(args_cli.replay_npz, allow_pickle=False)
+        replay_actions = torch.tensor(stored["actions"], dtype=torch.float32, device=device)
+        print(f"[simgap] replay_npz: loaded {replay_actions.shape[0]} steps from {args_cli.replay_npz}")
+
     env.reset(hard=True)
 
-    T = traj.num_steps
+    T = replay_actions.shape[0] if replay_actions is not None else traj.num_steps
     buf_actions = np.zeros((T, num_joints), dtype=np.float32)
     buf_joint_pos = np.zeros((T, num_joints), dtype=np.float32)
     buf_joint_vel = np.zeros((T, num_joints), dtype=np.float32)
@@ -111,7 +119,10 @@ def main():
     step = 0
     while simulation_app.is_running() and step < T:
         with torch.inference_mode():
-            a = traj.action_at(step, num_envs=n_envs)
+            if replay_actions is not None:
+                a = replay_actions[step].unsqueeze(0).expand(n_envs, -1)
+            else:
+                a = traj.action_at(step, num_envs=n_envs)
             env.step(a)
 
         buf_actions[step] = a[0].cpu().numpy()
@@ -160,6 +171,10 @@ def main():
     if buf_ball_pos is not None:
         payload["ball_pos"] = buf_ball_pos
         payload["ball_vel"] = buf_ball_vel
+
+    if args_cli.no_save:
+        print(f"[simgap] --no_save set, skipping NPZ write  (T={T} steps, dt={dt:.4f}s)")
+        return
 
     np.savez_compressed(out, **payload)
     print(f"[simgap] wrote {out}  (T={T} steps, dt={dt:.4f}s)")
