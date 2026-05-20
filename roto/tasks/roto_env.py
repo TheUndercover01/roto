@@ -380,7 +380,7 @@ class RotoEnv(DirectRLEnv):
         self.robot.set_joint_position_target(joint_pos, env_ids=env_ids)
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
 
-    def _compute_intermediate_values(self, env_ids):
+    def _compute_intermediate_values(self, env_ids=None):
         """Compute intermediate values for observations and rewards.
 
         Updates joint positions, velocities, accelerations, and their normalized versions.

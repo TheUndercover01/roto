@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_DIR="${1:-roto/scripts/results/with_touchlab/trajectory_car}"
+OUTPUT_DIR="${1:-/home/ayush/Desktop/gap/roto/scripts/results/with_touchlab/trajectory_car}"
 DURATION="${2:-10.0}"
 NUM_SEEDS=10
 
