@@ -24,7 +24,8 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 from isaaclab.utils.math import quat_conjugate, quat_from_angle_axis, quat_mul
 
-from roto.assets.shadow_hand_lite import SHADOW_HAND_LITE_CFG
+from roto.assets.shadow_hand_lite import SHADOW_HAND_LITE_CFG  # noqa: F401  (stock PST fingertips)
+from roto.assets.shadow_hand_lite_touchlab import SHADOW_HAND_LITE_TOUCHLAB_CFG
 from roto.tasks.roto_env import RotoEnv, RotoEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
@@ -51,7 +52,8 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
     reset_joint_vel_noise = 0.0
 
     hand_height = 0.5
-    robot_cfg: ArticulationCfg = SHADOW_HAND_LITE_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
+    # TouchLab v5 fingertips. Swap to SHADOW_HAND_LITE_CFG for stock PST caps.
+    robot_cfg: ArticulationCfg = SHADOW_HAND_LITE_TOUCHLAB_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, hand_height),
             #rot=(0.0, 0.0, -0.7071, 0.7071),

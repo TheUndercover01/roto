@@ -1,0 +1,76 @@
+============================================================
+  Tactile Sensor Characterization Report
+============================================================
+  Rollouts loaded   : 30
+  Excluded (spikes > 18.0 N) : 4
+  Valid rollouts    : 26
+  Contact threshold : 0.1 N
+  Excluded seeds    : seed=1 (max=64.4N), seed=5 (max=136.4N), seed=18 (max=92.5N), seed=25 (max=134.1N)
+
+--- Channel 0: ff_distal ---
+  Range             : [0.0000, 4.1042] N
+  Mean              : 0.0821 N   Std: 0.3671 N
+  Median            : 0.0000 N
+  Skewness          : 5.573   Kurtosis: 35.550
+  Noise floor (p5)  : 0.0000 N
+  Baseline std      : 0.0021 N
+  SNR               : 585.26
+  Contact fraction  : 6.81%
+  Events/rollout    : 4.19 ± 2.37
+  Event duration    : 162.4 ± 112.8 ms
+  Rise time         : 41.2 ± 43.3 ms
+  Smoothness        : 0.0196 N/step
+  Spike rate        : 0.42 events/s
+  Mean pairwise r   : nan ± nan
+  Scaling factor    : 12.05x
+
+--- Channel 1: mf_distal ---
+  Range             : [0.0000, 10.1883] N
+  Mean              : 0.1363 N   Std: 0.4762 N
+  Median            : 0.0000 N
+  Skewness          : 4.646   Kurtosis: 31.016
+  Noise floor (p5)  : 0.0000 N
+  Baseline std      : 0.0027 N
+  SNR               : 457.13
+  Contact fraction  : 11.16%
+  Events/rollout    : 6.81 ± 3.10
+  Event duration    : 163.9 ± 118.9 ms
+  Rise time         : 38.6 ± 43.6 ms
+  Smoothness        : 0.0307 N/step
+  Spike rate        : 0.68 events/s
+  Mean pairwise r   : -0.0002 ± 0.1103
+  Scaling factor    : 12.20x
+
+--- Channel 2: rf_distal ---
+  Range             : [0.0000, 10.1883] N
+  Mean              : 0.0600 N   Std: 0.3274 N
+  Median            : 0.0000 N
+  Skewness          : 7.920   Kurtosis: 101.374
+  Noise floor (p5)  : 0.0000 N
+  Baseline std      : 0.0019 N
+  SNR               : 629.72
+  Contact fraction  : 5.01%
+  Events/rollout    : 3.04 ± 1.40
+  Event duration    : 165.0 ± 123.8 ms
+  Rise time         : 37.4 ± 48.4 ms
+  Smoothness        : 0.0128 N/step
+  Spike rate        : 0.30 events/s
+  Mean pairwise r   : -0.0050 ± 0.1024
+  Scaling factor    : 11.95x
+
+--- Channel 3: th_distal ---
+  Range             : [0.0000, 5.3315] N
+  Mean              : 0.0143 N   Std: 0.2111 N
+  Median            : 0.0000 N
+  Skewness          : 17.926   Kurtosis: 352.885
+  Noise floor (p5)  : 0.0000 N
+  Baseline std      : 0.0005 N
+  SNR               : 3911.48
+  Contact fraction  : 0.72%
+  Events/rollout    : 0.58 ± 0.63
+  Event duration    : 124.4 ± 65.2 ms
+  Rise time         : 16.7 ± 26.0 ms
+  Smoothness        : 0.0044 N/step
+  Spike rate        : 0.06 events/s
+  Mean pairwise r   : nan ± nan
+  Scaling factor    : 19.86x

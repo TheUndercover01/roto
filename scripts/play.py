@@ -49,6 +49,8 @@ if args_cli.video:
 sys.argv = [sys.argv[0]] + hydra_args
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
+
+# Isaac Sim modules must be imported after SimulationApp is instantiated
 import torch
 
 import isaaclab_tasks  # noqa: F401
