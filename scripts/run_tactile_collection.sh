@@ -8,9 +8,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_DIR="${1:-results/tactile_characterization}"
+OUTPUT_DIR="${1:-/home/ayush/Desktop/gap/roto/scripts/results/with_touchlab/trajectory_car}"
 DURATION="${2:-10.0}"
-NUM_SEEDS=30
+NUM_SEEDS=10
 
 echo "[tactile_collection] Writing to: $OUTPUT_DIR"
 echo "[tactile_collection] Duration per rollout: ${DURATION}s  |  Seeds: 0–$((NUM_SEEDS - 1))"

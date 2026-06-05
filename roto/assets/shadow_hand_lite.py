@@ -28,11 +28,16 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 SHADOW_HAND_LITE_CFG = ArticulationCfg(
      spawn=sim_utils.UrdfFileCfg(
-         asset_path=f"/home/ayush/Desktop/gap/roto/roto/assets/shadow_lite/sr_hand_mimic.urdf", #change path
+         asset_path=f"/home/ayush/Desktop/gap/roto/roto/assets/shadow_lite/sr_hand_mimic_touchlab.urdf", #change path
          usd_dir=f"/home/ayush/Desktop/gap/roto/roto/assets/shadow_lite",
-         usd_file_name="sr_hand_new_mimic.usd",
+         usd_file_name="sr_hand_touch.usd",
          scale=(1.0, 1.0, 1.0),
          fix_base=True,
+         # TouchLab fingertip <collision> is the fingertip_v5_simple.stl mesh.
+         # convex_hull is the Isaac Lab default and exactly what the original PST
+         # fingertip used; the only concavity is the internal mount socket, which
+         # never contacts anything, so the hull of the sensing surface is faithful.
+         collider_type="convex_hull",
          joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
                  stiffness=30.0,
@@ -92,6 +97,73 @@ SHADOW_HAND_LITE_CFG = ArticulationCfg(
      soft_joint_pos_limit_factor=1.0,
  )
 """Configuration of Shadow Hand robot."""
+
+# SHADOW_HAND_LITE_TOUCHLAB_CFG = ArticulationCfg(
+#     spawn=sim_utils.UrdfFileCfg(
+#         asset_path=f"/home/ayush/Desktop/gap/roto/roto/assets/shadow_lite/sr_hand_mimic_touchlab.urdf",
+#         usd_dir=f"/home/ayush/Desktop/gap/roto/roto/assets/shadow_lite",
+#         usd_file_name="sr_hand_mimic_touchlab.usd",
+#         scale=(1.0, 1.0, 1.0),
+#         fix_base=True,
+#         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
+#             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
+#                 stiffness=30.0,
+#                 damping=1.0,
+#             ),
+#         ),
+#         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5)),
+#         collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+#         activate_contact_sensors=True,
+#         rigid_props=sim_utils.RigidBodyPropertiesCfg(
+#             disable_gravity=True,
+#             retain_accelerations=True,
+#             max_depenetration_velocity=1000.0,
+#         ),
+#         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+#             enabled_self_collisions=True,
+#             solver_position_iteration_count=8,
+#             solver_velocity_iteration_count=0,
+#             sleep_threshold=0.005,
+#             stabilization_threshold=0.0005,
+#         ),
+#         joint_drive_props=sim_utils.JointDrivePropertiesCfg(drive_type="force"),
+#         fixed_tendons_props=sim_utils.FixedTendonPropertiesCfg(limit_stiffness=30.0, damping=0.1),
+#     ),
+#     init_state=ArticulationCfg.InitialStateCfg(
+#         pos=(0.0, 0.0, 0.5),
+#         rot=(0.0, 0.0, -0.7071, 0.7071),
+#         joint_pos={".*": 0.0},
+#     ),
+#     actuators={
+#         "fingers": ImplicitActuatorCfg(
+#             joint_names_expr=["rh_[MRF]FJ[2-4]", "rh_THJ[1245]"],
+#             effort_limit_sim={
+#                 "rh_[MRF]FJ[23]": 0.9,
+#                 "rh_[MRF]FJ4": 0.9,
+#                 "rh_THJ5": 2.3722,
+#                 "rh_THJ4": 1.45,
+#                 "rh_THJ[12]": 0.99,
+#             },
+#             stiffness={
+#                 "rh_[MRF]FJ[2-4]": 1.0,
+#                 "rh_THJ[1245]": 1.0,
+#             },
+#             damping={
+#                 "rh_[MRF]FJ[2-4]": 0.1,
+#                 "rh_THJ[1245]": 0.1,
+#             },
+#         ),
+#     },
+#     soft_joint_pos_limit_factor=1.0,
+# )
+# """Shadow Hand Lite with TouchLab v5 fingertips (box collision + 16 taxel contact links per finger).
+
+# To monitor per-taxel contact forces in Isaac Lab, update ContactSensorCfg.prim_path to:
+#     "/World/envs/env_.*/Robot/rh_(ff|mf|rf|th)_(A|B|C|D|E)[0-9]_taxel"
+# This yields net_forces_w shape [N, 64, 3] (16 taxels x 4 fingers).
+# Keep the default distal-link path for coarse per-finger sensing ([N, 4, 3]).
+# """
+
 # SHADOW_HAND_LITE_CFG = ArticulationCfg(
 #     spawn=sim_utils.UsdFileCfg(
 #         # Point to your local USD file

@@ -9,7 +9,10 @@ Default: GUI on, one env, with-ball variant. Pass ``--headless`` for batch runs.
 from __future__ import annotations
 
 import argparse
+import math
 import os
+import socket
+import struct
 import sys
 import time
 from pathlib import Path
@@ -29,6 +32,10 @@ parser.add_argument("--output_dir", type=str, default="results/simgap", help="Wh
 parser.add_argument("--tag", type=str, default="sim", help="Filename prefix (e.g. 'sim' or 'real').")
 parser.add_argument("--replay_npz", type=str, default=None, help="Path to an existing NPZ file. Replays its stored 'actions' instead of generating a new trajectory (useful to verify hardware replay in sim).")
 parser.add_argument("--no_save", action="store_true", default=False, help="Skip saving the output NPZ (useful when just replaying for visual verification).")
+parser.add_argument("--live_port", type=int, default=None, help="If set, stream per-step tactile over UDP to 127.0.0.1:<port> for live_tactile_monitor.py (real-time contact graph).")
+parser.add_argument("--object", choices=["ball", "cuboid"], default="ball", help="Contact object: 'ball' (babble) or 'cuboid' (6x3x3 cm pinch test).")
+parser.add_argument("--motion", choices=["babble", "press"], default="babble", help="'babble' (seeded sinusoid) or 'press' (single-finger ramp-and-hold).")
+parser.add_argument("--press-finger", dest="press_finger", choices=["th", "mf", "rf", "ff"], default="th", help="Finger that ramp-and-holds in --motion press (others held at grasp).")
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 parser.add_argument("--video", action="store_true", default=False, help="Unused; kept for make_env compatibility.")
 parser.add_argument("--video_length", type=int, default=200)
@@ -47,8 +54,13 @@ import roto.tasks.simgap  # noqa: E402, F401  (registers SimGap_Shadowlite gym i
 # scripts/ is on sys.path because we're invoked from there.
 from common_utils import LOG_PATH, make_env, set_seed, update_env_cfg  # noqa: E402
 
+from roto.tasks.roto_env import unscale  # noqa: E402
 from roto.tasks.simgap.simgap import SimGapShadowLiteCfg  # noqa: E402
-from roto.tasks.simgap.trajectories import SinusoidTrajectory  # noqa: E402
+from roto.tasks.simgap.trajectories import FingerPressTrajectory, SinusoidTrajectory  # noqa: E402
+
+# Per-finger 16-taxel slices into the 64-dim TacSL vector (order matches
+# ShadowLiteEnv._get_tactile(): ff, mf, rf, th).
+FINGER_SLICE = {"ff": (0, 16), "mf": (16, 32), "rf": (32, 48), "th": (48, 64)}
 
 import yaml  # noqa: E402
 
@@ -74,6 +86,28 @@ def main():
 
     env_cfg = update_env_cfg(args_cli, env_cfg, agent_cfg)
 
+    # Object + press setup (after update_env_cfg so it isn't clobbered).
+    env_cfg.object_type = args_cli.object
+    if args_cli.object == "cuboid":
+        env_cfg.with_ball = True
+
+    press_prefix = f"rh_{args_cli.press_finger.upper()}"
+    if args_cli.motion == "press":
+        grasp_deg = env_cfg.grasp_joint_pos_deg
+        start_deg_override = env_cfg.start_joint_pos_deg or {}
+        start_pose_rad = {}
+        for jn, gdeg in grasp_deg.items():
+            if jn in start_deg_override:
+                sdeg = start_deg_override[jn]
+            elif jn.startswith(press_prefix):
+                sdeg = 0.0  # press finger starts neutral/open, ramps to grasp
+            else:
+                sdeg = gdeg  # holder / out-of-way joints stay at grasp
+            start_pose_rad[jn] = math.radians(sdeg)
+        # Deterministic, hardware-replayable reset at the trajectory's step-0 pose.
+        env_cfg.reset_joint_pos_noise = 0.0
+        env_cfg.robot_cfg.init_state.joint_pos = {".*": 0.0, **start_pose_rad}
+
     env = make_env(agent_cfg, env_cfg, writer=None, args_cli=args_cli)
 
     inner = env._unwrapped if hasattr(env, "_unwrapped") else env.unwrapped
@@ -81,13 +115,58 @@ def main():
     num_joints = int(inner.cfg.num_actions)
     device = inner.device
 
-    traj = SinusoidTrajectory(
-        seed=args_cli.seed,
-        num_joints=num_joints,
-        duration_s=args_cli.duration_s,
-        dt=dt,
-        device=device,
-    )
+    if args_cli.motion == "press":
+        # Action slot i maps to robot joint actuated_dof_indices[i] (sorted),
+        # so build grasp/start vectors + press_mask in that same order.
+        adi = list(inner.actuated_dof_indices)
+        names = [inner.robot.joint_names[g] for g in adi]
+        lo = inner.robot_joint_pos_lower_limits[adi]
+        hi = inner.robot_joint_pos_upper_limits[adi]
+        grasp_deg = inner.cfg.grasp_joint_pos_deg
+        start_deg_override = inner.cfg.start_joint_pos_deg or {}
+
+        press_mask = np.array([n.startswith(press_prefix) for n in names], dtype=bool)
+        g_rad = torch.tensor(
+            [math.radians(grasp_deg[n]) for n in names], dtype=torch.float32, device=device
+        )
+        s_rad = torch.tensor(
+            [
+                math.radians(
+                    start_deg_override[n]
+                    if n in start_deg_override
+                    else (0.0 if n.startswith(press_prefix) else grasp_deg[n])
+                )
+                for n in names
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
+        # Clamp to soft limits so normalized actions stay in [-1, 1].
+        g_rad = torch.clamp(g_rad, lo, hi)
+        s_rad = torch.clamp(s_rad, lo, hi)
+        grasp_actions = unscale(g_rad, lo, hi).cpu().numpy()
+        start_actions = unscale(s_rad, lo, hi).cpu().numpy()
+
+        traj = FingerPressTrajectory(
+            start_actions=start_actions,
+            grasp_actions=grasp_actions,
+            press_mask=press_mask,
+            ramp_s=float(inner.cfg.ramp_s),
+            duration_s=args_cli.duration_s,
+            dt=dt,
+            device=device,
+        )
+        print(f"[simgap] press: finger={args_cli.press_finger} "
+              f"ramp_s={inner.cfg.ramp_s} "
+              f"press_joints={[n for n, m in zip(names, press_mask) if m]}")
+    else:
+        traj = SinusoidTrajectory(
+            seed=args_cli.seed,
+            num_joints=num_joints,
+            duration_s=args_cli.duration_s,
+            dt=dt,
+            device=device,
+        )
 
     replay_actions: torch.Tensor | None = None
     if args_cli.replay_npz is not None:
@@ -104,6 +183,10 @@ def main():
     buf_pos_err = np.zeros((T, num_joints), dtype=np.float32)
     buf_tactile: np.ndarray | None = None
 
+    # Summed tactile force over the active finger's 16-taxel block.
+    active_slice = FINGER_SLICE[args_cli.press_finger] if args_cli.motion == "press" else None
+    buf_finger_force = np.zeros(T, dtype=np.float32)
+
     if env_cfg.with_ball:
         buf_ball_pos = np.zeros((T, 3), dtype=np.float32)
         buf_ball_vel = np.zeros((T, 3), dtype=np.float32)
@@ -115,6 +198,13 @@ def main():
 
     idx = inner.actuated_dof_indices
     n_envs = int(inner.num_envs)
+
+    live_sock = None
+    live_addr = ("127.0.0.1", args_cli.live_port or 0)
+    if args_cli.live_port is not None:
+        live_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        print(f"[simgap] live tactile → udp {live_addr[0]}:{live_addr[1]}  "
+              f"(run: python scripts/live_tactile_monitor.py --port {args_cli.live_port})")
 
     step = 0
     while simulation_app.is_running() and step < T:
@@ -135,6 +225,18 @@ def main():
             buf_tactile = np.zeros((T, tac.shape[0]), dtype=np.float32)
         buf_tactile[step] = tac
 
+        if active_slice is not None and tac.shape[0] >= active_slice[1]:
+            buf_finger_force[step] = float(tac[active_slice[0]:active_slice[1]].sum())
+
+        if live_sock is not None:
+            t_now = time.time() - t0
+            tac_f = np.ascontiguousarray(tac, dtype="<f4")
+            pkt = struct.pack("<iid", int(tac_f.shape[0]), step, float(t_now)) + tac_f.tobytes()
+            try:
+                live_sock.sendto(pkt, live_addr)
+            except OSError:
+                pass  # never let the monitor stall the sim
+
         if buf_ball_pos is not None:
             ball_pos_w = inner.ball.data.root_pos_w[0] - inner.scene.env_origins[0]
             ball_vel_w = inner.ball.data.root_lin_vel_w[0]
@@ -146,10 +248,14 @@ def main():
 
     env.close()
 
+    if args_cli.motion == "press":
+        print(f"[simgap] {args_cli.press_finger} summed force: "
+              f"peak={buf_finger_force.max():.4f}  final={buf_finger_force[-1]:.4f}")
+
     out_dir = Path(args_cli.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    ball_str = "ball" if args_cli.with_ball else "noball"
-    out = out_dir / f"{args_cli.tag}_{ball_str}_seed{args_cli.seed:04d}.npz"
+    obj_str = args_cli.object if args_cli.with_ball else "noball"
+    out = out_dir / f"{args_cli.tag}_{obj_str}_{args_cli.motion}_seed{args_cli.seed:04d}.npz"
 
     payload = dict(
         actions=buf_actions,
@@ -163,11 +269,21 @@ def main():
         dt=dt,
         duration_s=args_cli.duration_s,
         with_ball=args_cli.with_ball,
+        object_type=args_cli.object,
+        motion=args_cli.motion,
         tag=args_cli.tag,
-        traj_amps=traj.meta["amps"],
-        traj_freqs=traj.meta["freqs"],
-        traj_phases=traj.meta["phases"],
     )
+    if args_cli.motion == "press":
+        payload["finger_force"] = buf_finger_force
+        payload["active_finger"] = args_cli.press_finger
+        payload["press_mask"] = traj.meta["press_mask"]
+        payload["ramp_s"] = traj.meta["ramp_s"]
+        payload["grasp_actions"] = traj.meta["grasp_actions"]
+        payload["start_actions"] = traj.meta["start_actions"]
+    else:
+        payload["traj_amps"] = traj.meta["amps"]
+        payload["traj_freqs"] = traj.meta["freqs"]
+        payload["traj_phases"] = traj.meta["phases"]
     if buf_ball_pos is not None:
         payload["ball_pos"] = buf_ball_pos
         payload["ball_vel"] = buf_ball_vel

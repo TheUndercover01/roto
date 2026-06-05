@@ -11,9 +11,14 @@ Shadow-hand base environment utilities shared across RoTO tasks.
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import torch
+import trimesh
 from collections.abc import Sequence
+
+from pxr import UsdGeom, UsdPhysics
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, ArticulationCfg
@@ -23,12 +28,118 @@ from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 from isaaclab.utils.math import quat_conjugate, quat_from_angle_axis, quat_mul
+from isaaclab_assets.sensors import GELSIGHT_R15_CFG
+from isaaclab_contrib.sensors.tacsl_sensor import VisuoTactileSensorCfg
+from isaaclab_contrib.sensors.tacsl_sensor.visuotactile_sensor import VisuoTactileSensor
 
 from roto.assets.shadow_hand_lite import SHADOW_HAND_LITE_CFG  # noqa: F401  (stock PST fingertips)
 from roto.assets.shadow_hand_lite_touchlab import SHADOW_HAND_LITE_TOUCHLAB_CFG
 from roto.tasks.roto_env import RotoEnv, RotoEnvCfg
 
+# Placeholder taxel selection indices (0-24 in a 5x5 grid).
+# Run with trimesh_vis_tactile_points=True to visualize the grid, then replace
+# these with the 16 flat indices that match the TouchLab V5 A-E group layout.
+TACSL_TAXEL_INDICES: dict[str, list[int]] = {
+    "ff": list(range(16)),
+    "mf": list(range(16)),
+    "rf": list(range(16)),
+    "th": list(range(16)),
+}
+
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
+
+
+class PadGridTacSLSensor(VisuoTactileSensor):
+    """TacSL sensor that forces the grid onto a chosen fingertip face.
+
+    Stock TacSL picks ``slim_axis = argmin(bbox)`` and the side via center-of-mass.
+    That heuristic assumes a thin elastomer pad; ``fingertip_v5.stl`` is a full 3-D
+    fingertip (X=19, Y=19.5, Z=27 mm) so argmin lands the grid on the lateral +X
+    side instead of the contact pad. We override ``slim_axis`` / ``tip_sign`` from
+    the cfg (Y-min = the palmar pad, validated via scripts/viz_tacsl_grid.py).
+    """
+
+    def _generate_tactile_points(self, num_divs: list, margin: float, visualize: bool):
+        elastomer_prim_path = self._parent_prims[0].GetPath().pathString
+
+        def is_visual_mesh(prim) -> bool:
+            return prim.IsA(UsdGeom.Mesh) and not prim.HasAPI(UsdPhysics.CollisionAPI)
+
+        elastomer_mesh_prim = sim_utils.get_first_matching_child_prim(
+            elastomer_prim_path, predicate=is_visual_mesh
+        )
+        if elastomer_mesh_prim is None:
+            raise RuntimeError(f"No visual mesh found under elastomer at path: {elastomer_prim_path}")
+
+        usd_mesh = UsdGeom.Mesh(elastomer_mesh_prim)
+        points = np.asarray(usd_mesh.GetPointsAttr().Get())
+        faces = np.asarray(usd_mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
+        mesh = trimesh.Trimesh(vertices=points, faces=faces)
+
+        mesh_bounds = np.array([points.min(axis=0), points.max(axis=0)])
+        elastomer_dims = np.diff(mesh_bounds, axis=0).squeeze()
+
+        # --- forced axis/side (vs. stock argmin + center-of-mass) ---
+        slim_axis = int(self.cfg.force_slim_axis)
+        tip_direction_sign = float(self.cfg.force_tip_sign)
+
+        axis_idxs = [a for a in range(3) if a != slim_axis]
+        div_sz = (elastomer_dims[axis_idxs] - margin * 2.0) / (np.array(num_divs) + 1)
+        tactile_points_dx = float(min(div_sz))
+
+        center = (mesh_bounds[0] + mesh_bounds[1]) / 2.0
+        planar_grid_points = []
+        idx = 0
+        for axis_i in range(3):
+            if axis_i == slim_axis:
+                planar_grid_points.append([tip_direction_sign])
+            else:
+                axis_grid_points = np.linspace(
+                    center[axis_i] - tactile_points_dx * (num_divs[idx] + 1.0) / 2.0,
+                    center[axis_i] + tactile_points_dx * (num_divs[idx] + 1.0) / 2.0,
+                    num_divs[idx] + 2,
+                )
+                planar_grid_points.append(axis_grid_points[1:-1])
+                idx += 1
+
+        grid_corners = np.array(list(itertools.product(*planar_grid_points)))
+        ray_dir = np.zeros(3)
+        ray_dir[slim_axis] = -tip_direction_sign
+
+        mesh_data = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
+        _, index_ray, locations = mesh_data.intersects_id(
+            grid_corners,
+            np.tile([ray_dir], (grid_corners.shape[0], 1)),
+            return_locations=True,
+            multiple_hits=False,
+        )
+
+        if visualize:
+            query_pointcloud = trimesh.PointCloud(locations, colors=(0.0, 0.0, 1.0))
+            trimesh.Scene([mesh, query_pointcloud]).show()
+
+        tactile_points = locations[index_ray.argsort()]
+        self._tactile_pos_local = torch.tensor(tactile_points, dtype=torch.float32, device=self._device)
+        self.num_tactile_points = self._tactile_pos_local.shape[0]
+        expected = self.cfg.tactile_array_size[0] * self.cfg.tactile_array_size[1]
+        if self.num_tactile_points != expected:
+            raise RuntimeError(
+                f"Number of tactile points does not match expected: "
+                f"{self.num_tactile_points} != {expected} "
+                f"(forced axis={slim_axis}, sign={tip_direction_sign:+.0f}; "
+                f"some rays missed the mesh silhouette)"
+            )
+
+
+@configclass
+class PadGridTacSLSensorCfg(VisuoTactileSensorCfg):
+    """VisuoTactileSensorCfg + forced grid axis/side. Defaults: Y-min (palmar pad)."""
+
+    class_type: type = PadGridTacSLSensor
+    force_slim_axis: int = 1
+    """0=X, 1=Y, 2=Z in the fingertip-mesh frame. Y-min = the contact pad."""
+    force_tip_sign: float = -1.0
+    """-1.0 → grid on the min face of force_slim_axis; +1.0 → max face."""
 
 
 @configclass
@@ -47,9 +158,13 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
 
     episode_length_s = 10.0
 
-
     reset_joint_pos_noise = 0.2
     reset_joint_vel_noise = 0.0
+
+    tacsl_contact_expr: str | None = "{ENV_REGEX_NS}/ball1"
+    """Prim path expression for the TacSL contact object.
+    Set to None to disable TacSL and fall back to ContactSensor (e.g. --no_ball mode).
+    """
 
     hand_height = 0.5
     # TouchLab v5 fingertips. Swap to SHADOW_HAND_LITE_CFG for stock PST caps.
@@ -57,7 +172,8 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, hand_height),
             #rot=(0.0, 0.0, -0.7071, 0.7071),
-            rot=(-0.7071, 0, 0.0, 0.7071), #upright pos 
+            #rot=(-0.7071, 0, 0.0, 0.7071), #upright pos 
+            rot=(0.0, 0.0, -0.7373, 0.6756),
             #rot=(0.0, 0.0, -0.7933, 0.6087), 15 degree tilt forward facing up
             joint_pos={".*": 0.0},
 
@@ -160,9 +276,16 @@ class ShadowLiteEnv(RotoEnv):
 
         super().__init__(cfg, render_mode, **kwargs)
         print("NUM TACTILE BODIES:", self.robot_contact_sensor.data.net_forces_w.shape)
-        self.num_tactile_observations = 0
-        self.tactile = torch.zeros((self.num_envs, 0), device=self.device)
-        self.last_tactile = torch.zeros((self.num_envs, 0), device=self.device)
+        if hasattr(self, "tacsl_ff_sensor"):
+            # TacSL active: 4 fingers × 16 selected taxels from 5×5 grid
+            self.num_tactile_observations = 64
+            self.tactile = torch.zeros((self.num_envs, 64), device=self.device)
+            self.last_tactile = torch.zeros((self.num_envs, 64), device=self.device)
+        else:
+            # ContactSensor fallback (--no_ball): 4 distal links
+            self.num_tactile_observations = 4
+            self.tactile = torch.zeros((self.num_envs, 4), device=self.device)
+            self.last_tactile = torch.zeros((self.num_envs, 4), device=self.device)
 
 
 
@@ -174,26 +297,72 @@ class ShadowLiteEnv(RotoEnv):
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         self.scene.clone_environments(copy_from_source=False)
         self.scene.articulations["robot"] = self.robot
+
+        # Create empty Xform prims as TacSL sensor anchor points under each fingertip.
+        # TacSL resolves visual mesh from the anchor's parent (rh_*distal), which holds
+        # the fingertip_v5 visual mesh.
+        import omni.usd
+        stage = omni.usd.get_context().get_stage()
+        for env_idx in range(self.num_envs):
+            env_path = f"/World/envs/env_{env_idx}"
+            for finger in ["ff", "mf", "rf", "th"]:
+                stage.DefinePrim(f"{env_path}/Robot/rh_{finger}distal/tacsl_sensor", "Xform")
+
         self.robot_contact_sensor = ContactSensor(self.cfg.robot_contact_sensor_cfg)
         self.scene.sensors["robot_contact_sensor"] = self.robot_contact_sensor
 
+        self._setup_tacsl_sensors()
+
+
+    def _setup_tacsl_sensors(self):
+        """Register one TacSL force-field sensor per fingertip."""
+        contact_expr = self.cfg.tacsl_contact_expr
+        if contact_expr is None:
+            return  # no contact object → skip TacSL; _get_tactile() falls back to ContactSensor
+        # Resolve {ENV_REGEX_NS} — the scene only does this for config-class fields,
+        # not for imperatively created sensors.
+        env_ns = self.scene.env_regex_ns
+        resolved_contact_expr = contact_expr.format(ENV_REGEX_NS=env_ns)
+        for finger in ["ff", "mf", "rf", "th"]:
+            cfg = PadGridTacSLSensorCfg(
+                prim_path=f"{env_ns}/Robot/rh_{finger}distal/tacsl_sensor",
+                render_cfg=GELSIGHT_R15_CFG,   # unused dummy — camera tactile is disabled
+                enable_camera_tactile=False,
+                enable_force_field=True,
+                tactile_array_size=(5, 5),     # 25 points; 16 selected via TACSL_TAXEL_INDICES
+                tactile_margin=0.001,
+                contact_object_prim_path_expr=resolved_contact_expr,
+                normal_contact_stiffness=1.0,
+                friction_coefficient=2.0,
+                tangential_stiffness=0.1,
+                force_slim_axis=1,             # Y-min = palmar contact pad (viz_tacsl_grid.py)
+                force_tip_sign=-1.0,
+                trimesh_vis_tactile_points=False,  # use scripts/viz_tacsl_grid.py to inspect grid offline
+                debug_vis=False,
+            )
+            sensor = VisuoTactileSensor(cfg)
+            self.scene.sensors[f"tacsl_{finger}"] = sensor
+            setattr(self, f"tacsl_{finger}_sensor", sensor)
 
     def _get_tactile(self):
-        """Return binary tactile activation per finger segment.
-
-        Reindexes the single contact sensor to match the legacy ordering:
-        [all distal, all proximal, all middle, palm, metacarpal].
-        """
-
-        forces = self.robot_contact_sensor.data.net_forces_w[:].clone()  # [N, B, 3]
-        norm = torch.linalg.vector_norm(forces, dim=-1)  # [N, B]
-
-        if self.tactile_cfg is not None and self.tactile_cfg.get("binary_tactile", True):
-            norm = (norm > self.binary_threshold).float()
-
+        """Return TacSL normal force (64 ch) or ContactSensor norms (4 ch) when no ball."""
+        if not hasattr(self, "tacsl_ff_sensor"):
+            # --no_ball fallback: ContactSensor (4 channels, one per distal link)
+            forces = self.robot_contact_sensor.data.net_forces_w[:].clone()
+            norm = torch.linalg.vector_norm(forces, dim=-1)
+            self.last_tactile = self.tactile
+            self.tactile = norm
+            return norm
+        parts = []
+        for finger in ["ff", "mf", "rf", "th"]:
+            sensor: VisuoTactileSensor = getattr(self, f"tacsl_{finger}_sensor")
+            normal_force = sensor.data.tactile_normal_force  # [num_envs, 25]
+            selected = normal_force[:, TACSL_TAXEL_INDICES[finger]]  # [num_envs, 16]
+            parts.append(selected)
+        tactile = torch.cat(parts, dim=-1)  # [num_envs, 64]
         self.last_tactile = self.tactile
-        self.tactile = norm
-        return norm
+        self.tactile = tactile
+        return tactile
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         """Reset articulation state and optionally randomize joints.

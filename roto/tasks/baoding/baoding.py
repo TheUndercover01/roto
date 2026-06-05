@@ -48,7 +48,7 @@ def make_baoding_object_cfgs(
     ball_1_cfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/ball1",
         init_state=RigidObjectCfg.InitialStateCfg(pos=ball_1_pos, rot=(1.0, 0.0, 0.0, 0.0)),
-        spawn=sim_utils.SphereCfg(
+        spawn=sim_utils.MeshSphereCfg(
             radius=ball_radius_m,
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0, restitution=0.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour_1, metallic=0.5),
@@ -69,7 +69,7 @@ def make_baoding_object_cfgs(
     ball_2_cfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/ball2",
         init_state=RigidObjectCfg.InitialStateCfg(pos=ball_2_pos, rot=(1.0, 0.0, 0.0, 0.0)),
-        spawn=sim_utils.SphereCfg(
+        spawn=sim_utils.MeshSphereCfg(
             radius=ball_radius_m,
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0, restitution=0.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour_2, metallic=0.5),
@@ -495,6 +495,26 @@ class BaodingShadowLiteEnv(BaodingMixin, ShadowLiteEnv):
         apply_baoding_object_cfgs_from_scalars(cfg)
         super().__init__(cfg, render_mode, **kwargs)
         self._init_baoding_state()
+
+    def _setup_scene(self) -> None:
+        # BaodingMixin._setup_scene() (called via super()) spawns the balls after
+        # ShadowLiteEnv._setup_scene() returns. Set SDF approximation here so PhysX
+        # builds the scene with SDF collision, which TacSL force-field queries require.
+        super()._setup_scene()
+        # define_mesh_collision_properties applies the PhysX SDF schema correctly
+        # (UsdPhysics.MeshCollisionAPI + PhysxSDFMeshCollisionAPI). A raw
+        # MeshCollisionAPI(prim).GetApproximationAttr().Set("sdf") no-ops because
+        # the API is not Apply()'d first, so PhysX falls back to convexHull.
+        import omni.usd
+
+        from isaaclab.sim.schemas import SDFMeshPropertiesCfg, define_mesh_collision_properties
+        stage = omni.usd.get_context().get_stage()
+        sdf_cfg = SDFMeshPropertiesCfg(sdf_resolution=256)
+        for ball_name in ["ball1", "ball2"]:
+            for env_idx in range(self.num_envs):
+                mesh_path = f"/World/envs/env_{env_idx}/{ball_name}/geometry/mesh"
+                if stage.GetPrimAtPath(mesh_path).IsValid():
+                    define_mesh_collision_properties(mesh_path, sdf_cfg, stage=stage)
 
 
 class BaodingOrcaEnv(BaodingMixin, OrcaEnv):
