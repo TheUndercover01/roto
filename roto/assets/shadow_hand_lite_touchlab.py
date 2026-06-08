@@ -82,10 +82,13 @@ SHADOW_HAND_LITE_TOUCHLAB_CFG = ArticulationCfg(
     ),
     actuators={
         "fingers": ImplicitActuatorCfg(
-            # J1 is a mimic joint and doesn't need a separate actuator.
-            joint_names_expr=["rh_[MRF]FJ[2-4]", "rh_THJ[1245]"],
+            # J1 actuated with the same gains as J2 so the software coupling
+            # (RotoEnv._handle_coupled_joints) drives both at matching rates.
+            joint_names_expr=["rh_[MRF]FJ[1-4]", "rh_THJ[1245]"],
             effort_limit_sim={
-                # Proximal and Middle joints (J1 removed)
+                # Distal joints (fingertips)
+                "rh_[MRF]FJ1": 0.7245,
+                # Proximal and Middle joints
                 "rh_[MRF]FJ[23]": 0.9,
                 # Knuckle abduction/adduction
                 "rh_[MRF]FJ4": 0.9,
@@ -96,11 +99,11 @@ SHADOW_HAND_LITE_TOUCHLAB_CFG = ArticulationCfg(
                 "rh_THJ[12]": 0.99,
             },
             stiffness={
-                "rh_[MRF]FJ[2-4]": 1.0,
+                "rh_[MRF]FJ[1-4]": 1.0,
                 "rh_THJ[1245]": 1.0,
             },
             damping={
-                "rh_[MRF]FJ[2-4]": 0.1,
+                "rh_[MRF]FJ[1-4]": 0.1,
                 "rh_THJ[1245]": 0.1,
             },
         ),

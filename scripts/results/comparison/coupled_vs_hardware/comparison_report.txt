@@ -1,0 +1,47 @@
+==============================================================
+  Sim-to-Real Comparison Report
+==============================================================
+  Seeds compared  : 10
+  Episode length  : 10.0s  (600 steps at 60 Hz)
+  Contact threshold: 0.1
+
+--- Joint Tracking (sim achieved vs real achieved) ---
+  (Large RMS = hardware controller not tracking well)
+
+  FFJ4      RMS = 0.0204 rad
+  MFJ4      RMS = 0.0203 rad
+  RFJ4      RMS = 0.0166 rad
+  THJ5      RMS = 0.0674 rad
+  FFJ3      RMS = 0.0809 rad
+  MFJ3      RMS = 0.0644 rad
+  RFJ3      RMS = 0.0661 rad
+  THJ4      RMS = 0.1128 rad
+  FFJ2      RMS = 0.2248 rad
+  MFJ2      RMS = 0.2337 rad
+  RFJ2      RMS = 0.2066 rad
+  THJ2      RMS = 0.0450 rad
+  THJ1      RMS = 0.0769 rad
+
+  Mean across all joints: 0.0951 rad
+
+--- Tactile Gap per Channel ---
+
+  Channel        Sim mean  Real mean    Scale   Frac sim  Frac real
+  --------------------------------------------------------------
+  ff_distal        2.0668     0.0000   0.000×       5.0%       0.0%
+  mf_distal        3.2754     0.5573   0.170×       4.1%       0.9%
+  rf_distal        4.3320     0.7758   0.179×       1.5%       0.1%
+  th_distal        1.3136     3.2466   2.471×       2.1%       1.5%
+
+  Overall scaling factor: 0.705×
+  (multiply sim tactile by this to match real magnitude)
+
+--- Cross-seed Variability (Pearson r, pairwise mean) ---
+
+  ff_distal     sim r = 0.019 ± 0.158    real r = -0.007 ± 0.052
+  mf_distal     sim r = 0.063 ± 0.245    real r = -0.004 ± 0.076
+  rf_distal     sim r = 0.050 ± 0.209    real r = 0.056 ± 0.125
+  th_distal     sim r = nan ± nan    real r = -0.007 ± 0.097
+
+  Note: real variability > sim is expected (physical repeatability limits).
+==============================================================

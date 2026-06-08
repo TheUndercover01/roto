@@ -73,9 +73,23 @@ def _parse_seeds(s: str) -> list[int]:
     return seeds
 
 
+# Coupling params — must match ShadowLiteEnvCfg.coupling_theta / coupled_joint_map.
+COUPLING_THETA = 0.785  # rad (π/4)
+COUPLED_J2_COLS = [POLICY_JOINT_ORDER.index(n) for n in ("rh_FFJ2", "rh_MFJ2", "rh_RFJ2")]
+
+
 def _actions_to_rad(actions: np.ndarray) -> np.ndarray:
-    """Scale (T,13) from [-1,1] to radians."""
-    return 0.5 * (actions + 1.0) * (UPPER_LIMITS - LOWER_LIMITS) + LOWER_LIMITS
+    """Scale (T,13) actions from [-1,1] to the radian command actually sent to each joint.
+
+    For the 3 coupled J2 drivers the action is a curl proxy, not a direct J2 target.
+    RotoEnv._handle_coupled_joints remaps it as j2_cmd = clamp(proxy * J2_max/theta, 0, J2_max),
+    so we apply the same transform here for a truthful command line.
+    """
+    rad = 0.5 * (actions + 1.0) * (UPPER_LIMITS - LOWER_LIMITS) + LOWER_LIMITS
+    for c in COUPLED_J2_COLS:
+        j2_max = UPPER_LIMITS[c]  # proxy is already in [0, j2_max] since LOWER_LIMITS[c] = 0
+        rad[:, c] = np.clip(rad[:, c] * (j2_max / COUPLING_THETA), 0.0, j2_max)
+    return rad
 
 
 def load_pairs(sim_dir: Path, real_dir: Path, seeds: list[int]):

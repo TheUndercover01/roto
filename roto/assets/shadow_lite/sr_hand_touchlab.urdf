@@ -344,7 +344,7 @@
     <!-- standard distal joint -->
     <limit effort="2" lower="0" upper="1.5707963267948966" velocity="2.0"/>
     <dynamics damping="0.1"/>
-    <mimic joint="rh_FFJ2" multiplier="0" offset="0.0"/>
+    
   </joint>
   <gazebo reference="rh_FFJ1">
     <provideFeedback>1</provideFeedback>
@@ -558,7 +558,7 @@
     <axis xyz="1 0 0"/>
     <!-- standard distal joint -->
     <limit effort="2" lower="0" upper="1.5707963267948966" velocity="2.0"/>
-    <mimic joint="rh_MFJ2" multiplier="1.0" offset="0.0"/>
+   
     <dynamics damping="0.1"/>
     
   </joint>
@@ -775,7 +775,7 @@
     <!-- standard distal joint -->
     <limit effort="2" lower="0" upper="1.5707963267948966" velocity="2.0"/>
     <dynamics damping="0.1"/>
-    <mimic joint="rh_RFJ2" multiplier="1.0" offset="0.0"/>
+
   </joint>
   <gazebo reference="rh_RFJ1">
     <provideFeedback>1</provideFeedback>

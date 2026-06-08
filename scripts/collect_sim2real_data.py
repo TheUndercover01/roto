@@ -118,7 +118,7 @@ def main():
     if args_cli.motion == "press":
         # Action slot i maps to robot joint actuated_dof_indices[i] (sorted),
         # so build grasp/start vectors + press_mask in that same order.
-        adi = list(inner.actuated_dof_indices)
+        adi = list(inner.control_dof_indices)   # 13 policy-controlled joints, in action-vector order
         names = [inner.robot.joint_names[g] for g in adi]
         lo = inner.robot_joint_pos_lower_limits[adi]
         hi = inner.robot_joint_pos_upper_limits[adi]
@@ -196,7 +196,7 @@ def main():
     timestamps = np.zeros(T, dtype=np.float64)
     t0 = time.time()
 
-    idx = inner.actuated_dof_indices
+    idx = inner.control_dof_indices   # 13 policy joints; J1 coupled values logged separately via joint_pos
     n_envs = int(inner.num_envs)
 
     live_sock = None

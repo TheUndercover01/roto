@@ -32,8 +32,7 @@ from isaaclab_assets.sensors import GELSIGHT_R15_CFG
 from isaaclab_contrib.sensors.tacsl_sensor import VisuoTactileSensorCfg
 from isaaclab_contrib.sensors.tacsl_sensor.visuotactile_sensor import VisuoTactileSensor
 
-from roto.assets.shadow_hand_lite import SHADOW_HAND_LITE_CFG  # noqa: F401  (stock PST fingertips)
-from roto.assets.shadow_hand_lite_touchlab import SHADOW_HAND_LITE_TOUCHLAB_CFG
+from roto.assets.shadow_hand_lite import SHADOW_HAND_LITE_CFG
 from roto.tasks.roto_env import RotoEnv, RotoEnvCfg
 
 # Placeholder taxel selection indices (0-24 in a 5x5 grid).
@@ -167,8 +166,8 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
     """
 
     hand_height = 0.5
-    # TouchLab v5 fingertips. Swap to SHADOW_HAND_LITE_CFG for stock PST caps.
-    robot_cfg: ArticulationCfg = SHADOW_HAND_LITE_TOUCHLAB_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
+    # Stock Shadow Lite (PST caps) from shadow_hand_lite.py.
+    robot_cfg: ArticulationCfg = SHADOW_HAND_LITE_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, hand_height),
             #rot=(0.0, 0.0, -0.7071, 0.7071),
@@ -238,21 +237,28 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
     # default_object_pos = (0., -0.265, 0.6)  # is this affecting the ball position at all? cuz this is not changing anything in the viewer
     # object_cfg: RigidObjectCfg = _make_bouncy_ball_cfg((0., -0.265, 0.6)  )
 
-    actuated_joint_names = [
-        # Finger Knuckles (Abduction/Adduction)
-        'rh_FFJ4', 'rh_MFJ4', 'rh_RFJ4', 
-        # Finger MCP (Proximal)
-        'rh_FFJ3', 'rh_MFJ3', 'rh_RFJ3', 
-        # Finger PIP (Middle) - J1 will mimic these
-        'rh_FFJ2', 'rh_MFJ2', 'rh_RFJ2', 
-        # Thumb joints (Complete chain)
-        'rh_THJ5', 'rh_THJ4', 'rh_THJ2', 'rh_THJ1'
-    ]
+    control_joint_names = [
+    "rh_FFJ4", "rh_MFJ4", "rh_RFJ4", "rh_THJ5",   # 0,1,2,3
+    "rh_FFJ3", "rh_MFJ3", "rh_RFJ3", "rh_THJ4",   # 4,5,6,7
+    "rh_FFJ2", "rh_MFJ2", "rh_RFJ2",              # 8,9,10  ← the J2 drivers
+    "rh_THJ2", "rh_THJ1",                          # 11,12
+]
 
-    #actuated_joint_names = ['rh_FFJ4', 'rh_MFJ4', 'rh_RFJ4', 'rh_THJ5', 'rh_FFJ3', 'rh_MFJ3', 'rh_RFJ3', 'rh_THJ4', 'rh_FFJ2', 'rh_MFJ2', 'rh_RFJ2', 'rh_FFJ1', 'rh_MFJ1', 'rh_RFJ1', 'rh_THJ2', 'rh_THJ1']
+    coupled_joint_map = {
+        "rh_FFJ1": "rh_FFJ2",
+        "rh_MFJ1": "rh_MFJ2",
+        "rh_RFJ1": "rh_RFJ2",
+    }
+
+    # J2 must reach this angle (rad) before J1 starts moving.
+    # 0.785 rad = 45°: first half of J2's range drives J2, second half drives J1.
+    coupling_theta: float = 0.785
+
+    actuated_joint_names = ['rh_FFJ4', 'rh_MFJ4', 'rh_RFJ4', 'rh_THJ5', 'rh_FFJ3', 'rh_MFJ3', 'rh_RFJ3', 'rh_THJ4', 'rh_FFJ2', 'rh_MFJ2', 'rh_RFJ2', 'rh_FFJ1', 'rh_MFJ1', 'rh_RFJ1', 'rh_THJ2', 'rh_THJ1']
 
 
-    num_actions = len(actuated_joint_names)
+    num_actions = len(control_joint_names)
+
     action_space = num_actions
 
     marker_cfg = FRAME_MARKER_CFG.copy()
