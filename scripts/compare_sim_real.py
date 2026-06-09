@@ -58,6 +58,10 @@ SIM_COLOR  = "#2166ac"   # blue
 REAL_COLOR = "#d6604d"   # red-orange
 CMD_COLOR  = "#888888"   # grey
 
+# Provenance string (label + sim actuator gains) stamped on plots/report.
+# Set in main() so you can see at a glance which config produced each figure.
+RUN_NOTE = ""
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -190,7 +194,8 @@ def plot_episode_joints(seed: int, sim_d, real_d, out_path: Path,
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 3.5, nrows * 2.8),
                              sharex=True, squeeze=False)
-    fig.suptitle(f"Joint Positions — Seed {seed}  (sim vs real vs command)", fontsize=13)
+    fig.suptitle(f"Joint Positions — Seed {seed}  (sim vs real vs command)"
+                 + (f"\n{RUN_NOTE}" if RUN_NOTE else ""), fontsize=11)
 
     for plot_idx, ji in enumerate(joint_indices):
         row, col = divmod(plot_idx, ncols)
@@ -276,7 +281,8 @@ def plot_aggregate_joints(pairs, joint_indices: list[int], out_path: Path) -> No
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 3.5, nrows * 2.8),
                              sharex=True, squeeze=False)
-    fig.suptitle("Aggregate Joint Positions — Mean ± Std across all seeds", fontsize=13)
+    fig.suptitle("Aggregate Joint Positions — Mean ± Std across all seeds"
+                 + (f"\n{RUN_NOTE}" if RUN_NOTE else ""), fontsize=11)
 
     for plot_idx, ji in enumerate(joint_indices):
         row, col = divmod(plot_idx, ncols)
@@ -431,6 +437,7 @@ def write_report(pairs, out_path: Path, contact_threshold: float) -> None:
         "=" * 62,
         "  Sim-to-Real Comparison Report",
         "=" * 62,
+        f"  Run note        : {RUN_NOTE}" if RUN_NOTE else "  Run note        : (none)",
         f"  Seeds compared  : {len(pairs)}",
         f"  Episode length  : {T_min * dt:.1f}s  ({T_min} steps at {1/dt:.0f} Hz)",
         f"  Contact threshold: {contact_threshold}",
@@ -531,6 +538,11 @@ def main() -> None:
     parser.add_argument("--joints", type=str, default=None,
                         help="Comma-separated joint names to plot, e.g. 'rh_FFJ3,rh_THJ5'. "
                              "Default: all 13.")
+    parser.add_argument("--label", type=str, default="",
+                        help="Free-text note stamped on every plot + report, e.g. 'damp0.3 eff2.5'. "
+                             "Use it to track what you changed between runs.")
+    parser.add_argument("--max_episodes", type=int, default=3,
+                        help="How many per-seed episode plots to generate (default: 3).")
     args = parser.parse_args()
 
     out_dir = args.out_dir or Path("results/comparison")
@@ -556,9 +568,20 @@ def main() -> None:
         raise RuntimeError("No matching seed pairs found.")
     print(f"[compare] {len(pairs)} pairs | joints: {len(joint_indices)} | out: {out_dir}")
 
-    # ── per-seed plots ──
-    for i, (seed, sim_d, real_d) in enumerate(pairs):
-        print(f"[compare] episode {i+1}/{len(pairs)} seed={seed} ...", end="\r")
+    # ── provenance: label + sim actuator gains (auto-read from the sim NPZ) ──
+    global RUN_NOTE
+    sim0 = pairs[0][1]
+    gains = " ".join(
+        f"{k}={str(sim0[k])}" for k in ("act_stiffness", "act_damping", "act_effort")
+        if k in sim0.files
+    )
+    RUN_NOTE = " | ".join(p for p in (args.label, gains) if p)
+    if RUN_NOTE:
+        print(f"[compare] run note: {RUN_NOTE}")
+
+    # ── per-seed plots (capped at --max_episodes; aggregates still use all seeds) ──
+    for i, (seed, sim_d, real_d) in enumerate(pairs[:args.max_episodes]):
+        print(f"[compare] episode {i+1}/{min(args.max_episodes, len(pairs))} seed={seed} ...", end="\r")
         plot_episode_tactile(
             seed, sim_d, real_d,
             episodes_dir / f"episode_seed{seed:04d}_tactile.png",

@@ -273,6 +273,17 @@ def main():
         motion=args_cli.motion,
         tag=args_cli.tag,
     )
+
+    # Stamp the actuator gains that produced this rollout, so compare_sim_real.py
+    # can auto-label plots with the config (no need to remember what you changed).
+    try:
+        _act = inner.cfg.robot_cfg.actuators.get("fingers")
+        payload["act_stiffness"] = str(getattr(_act, "stiffness", ""))
+        payload["act_damping"]   = str(getattr(_act, "damping", ""))
+        payload["act_effort"]    = str(getattr(_act, "effort_limit_sim", ""))
+        payload["coupling_theta"] = float(getattr(inner.cfg, "coupling_theta", 0.0))
+    except Exception as e:
+        print(f"[simgap] could not record actuator gains: {e}")
     if args_cli.motion == "press":
         payload["finger_force"] = buf_finger_force
         payload["active_finger"] = args_cli.press_finger

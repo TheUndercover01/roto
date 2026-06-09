@@ -1,0 +1,48 @@
+==============================================================
+  Sim-to-Real Comparison Report
+==============================================================
+  Run note        : eff2.5 K4 D0.3 arm0.00 | act_stiffness={'rh_[MRF]FJ[1-4]': 4.0, 'rh_THJ[1245]': 4.0} act_damping={'rh_[MRF]FJ[1-4]': 0.3, 'rh_THJ[1245]': 0.1} act_effort={'rh_[MRF]FJ1': 2.5, 'rh_[MRF]FJ[23]': 2.5, 'rh_[MRF]FJ4': 0.9, 'rh_THJ5': 2.3722, 'rh_THJ4': 1.45, 'rh_THJ[12]': 0.99}
+  Seeds compared  : 3
+  Episode length  : 10.0s  (600 steps at 60 Hz)
+  Contact threshold: 0.1
+
+--- Joint Tracking (sim achieved vs real achieved) ---
+  (Large RMS = hardware controller not tracking well)
+
+  FFJ4      RMS = 0.0279 rad
+  MFJ4      RMS = 0.0277 rad
+  RFJ4      RMS = 0.0232 rad
+  THJ5      RMS = 1.1142 rad
+  FFJ3      RMS = 0.0753 rad
+  MFJ3      RMS = 0.0834 rad
+  RFJ3      RMS = 0.0755 rad
+  THJ4      RMS = 0.2028 rad
+  FFJ2      RMS = 0.2343 rad
+  MFJ2      RMS = 0.2417 rad
+  RFJ2      RMS = 0.2341 rad
+  THJ2      RMS = 0.0795 rad
+  THJ1      RMS = 0.1267 rad
+
+  Mean across all joints: 0.1959 rad
+
+--- Tactile Gap per Channel ---
+
+  Channel        Sim mean  Real mean    Scale   Frac sim  Frac real
+  --------------------------------------------------------------
+  ff_distal        3.9195     0.0000   0.000×       8.8%       0.0%
+  mf_distal        5.3547     1.1972   0.224×       5.7%       0.7%
+  rf_distal        1.4498     0.0000   0.000×       0.9%       0.0%
+  th_distal        1.0092     3.7719   3.738×       4.0%       1.8%
+
+  Overall scaling factor: 0.990×
+  (multiply sim tactile by this to match real magnitude)
+
+--- Cross-seed Variability (Pearson r, pairwise mean) ---
+
+  ff_distal     sim r = -0.023 ± 0.026    real r = -0.080 ± 0.038
+  mf_distal     sim r = -0.009 ± 0.014    real r = 0.015 ± 0.038
+  rf_distal     sim r = nan ± nan    real r = -0.045 ± 0.078
+  th_distal     sim r = 0.023 ± 0.071    real r = -0.034 ± 0.083
+
+  Note: real variability > sim is expected (physical repeatability limits).
+==============================================================
