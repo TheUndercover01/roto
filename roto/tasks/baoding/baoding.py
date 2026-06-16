@@ -15,6 +15,7 @@ import torch
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObject, RigidObjectCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.sim.schemas import SDFMeshPropertiesCfg, define_mesh_collision_properties
 from isaaclab.sim.schemas.schemas_cfg import CollisionPropertiesCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.math import sample_uniform
@@ -48,7 +49,7 @@ def make_baoding_object_cfgs(
     ball_1_cfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/ball1",
         init_state=RigidObjectCfg.InitialStateCfg(pos=ball_1_pos, rot=(1.0, 0.0, 0.0, 0.0)),
-        spawn=sim_utils.MeshSphereCfg(
+        spawn=sim_utils.SphereCfg(
             radius=ball_radius_m,
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0, restitution=0.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour_1, metallic=0.5),
@@ -69,7 +70,7 @@ def make_baoding_object_cfgs(
     ball_2_cfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/ball2",
         init_state=RigidObjectCfg.InitialStateCfg(pos=ball_2_pos, rot=(1.0, 0.0, 0.0, 0.0)),
-        spawn=sim_utils.MeshSphereCfg(
+        spawn=sim_utils.SphereCfg(
             radius=ball_radius_m,
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0, restitution=0.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour_2, metallic=0.5),
@@ -91,7 +92,7 @@ def make_baoding_object_cfgs(
         prim_path="/Visuals/target_1",
         markers={
             "target_1": sim_utils.SphereCfg(
-                radius=ball_radius_m * 0.01,
+                radius=ball_radius_m ,
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour_1),
             ),
         },
@@ -100,7 +101,7 @@ def make_baoding_object_cfgs(
         prim_path="/Visuals/target_2",
         markers={
             "target_2": sim_utils.SphereCfg(
-                radius=ball_radius_m * 0.01,
+                radius=ball_radius_m ,
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour_2),
             ),
         },
@@ -189,21 +190,38 @@ class BaodingShadowLiteCfg(BaodingTaskCfg, ShadowLiteEnvCfg):
 
     ball_reset_height = 0.46
 
+    ball_mass_g = 30
+    success_tolerance = 0.013
+
     # ball size
-    ball_diameter_inches = 1.2
+    ball_diameter_inches = 1.5
     ball_radius_m = (ball_diameter_inches / 2) * 2.54 / 100
     ball_diameter_m = ball_radius_m * 2
 
     # initial ball positions
     ball_1_init_x = -0.03
-    ball_1_init_y = -.2
-    ball_2_init_x = -0.01
-    ball_2_init_y = -0.24
+    ball_1_init_y = -.225
+    ball_2_init_x = 0.01
+    ball_2_init_y = -0.255
 
     # target positions
     palm_target_x = 0
     palm_target_y = -0.25
-    palm_target_z = 0.39
+    palm_target_z = 0.41
+
+    # for 40 degree tilt forward
+    # ball_1_init_x = -0.03
+    # ball_1_init_y = -.17
+    # ball_2_init_x = -0.01
+    # ball_2_init_y = -0.19
+
+    # # target positions
+    # palm_target_x = 0
+    # palm_target_y = -0.19
+    # palm_target_z = 0.28
+
+ 
+
 
     target_offset = ball_diameter_m / 1.73205080757 + 0.001
     diagonal_target_x = palm_target_x - target_offset
@@ -336,6 +354,17 @@ class BaodingMixin:
         self.scene.rigid_objects["ball_1"] = self.ball_1
         self.scene.rigid_objects["ball_2"] = self.ball_2
 
+        # TacSL force-field sensor needs an SDF on the contact object.
+        # MeshSphereCfg defaults to boundingSphere; apply the PhysX SDF schema explicitly.
+        import omni.usd
+        stage = omni.usd.get_context().get_stage()
+        sdf_cfg = SDFMeshPropertiesCfg(sdf_resolution=256)
+        for env_idx in range(self.num_envs):
+            for ball_name in ("ball1", "ball2"):
+                mesh_path = f"/World/envs/env_{env_idx}/{ball_name}/geometry/mesh"
+                if stage.GetPrimAtPath(mesh_path).IsValid():
+                    define_mesh_collision_properties(mesh_path, sdf_cfg, stage=stage)
+
         light = sim_utils.DomeLightCfg(
             color=(0.81,0.86,1.28),
             intensity=1000.0,
@@ -413,8 +442,8 @@ class BaodingMixin:
         self._compute_intermediate_values()
 
         out_of_reach = self.ball_dist >= self.cfg.ball_dist_terminate
-        ball_1_fall = self.ball_1_pos[:, 2] < 0.3
-        ball_2_fall = self.ball_2_pos[:, 2] < 0.3
+        ball_1_fall = self.ball_1_pos[:, 2] < 0.2
+        ball_2_fall = self.ball_2_pos[:, 2] < 0.2 # changed from 0.3 to 0.2 for shadowlite 40 degree since the reset height is lower and we don't want episodes to terminate immediately after reset 
         termination = out_of_reach | ball_1_fall | ball_2_fall
         time_out = self.episode_length_buf >= self.max_episode_length - 1
 
@@ -461,7 +490,8 @@ class BaodingMixin:
     def _baoding_reset_balls(self, env_ids: Sequence[int]) -> None:
         ball_1_default_state = self.ball_1.data.default_root_state.clone()[env_ids]
         ball_2_default_state = self.ball_2.data.default_root_state.clone()[env_ids]
-        pos_noise = sample_uniform(-0.005, 0.005, (len(env_ids), 3), device=self.device)
+        #pos_noise = sample_uniform(-0.005, 0.005, (len(env_ids), 3), device=self.device) - > added noise 
+        pos_noise = sample_uniform(0.0, 0.0, (len(env_ids), 3), device=self.device)
 
         ball_1_default_state[:, 0:3] = ball_1_default_state[:, 0:3] + pos_noise + self.scene.env_origins[env_ids]
         ball_1_default_state[:, 7:] = torch.zeros_like(self.ball_1.data.default_root_state[env_ids, 7:])
@@ -495,26 +525,6 @@ class BaodingShadowLiteEnv(BaodingMixin, ShadowLiteEnv):
         apply_baoding_object_cfgs_from_scalars(cfg)
         super().__init__(cfg, render_mode, **kwargs)
         self._init_baoding_state()
-
-    def _setup_scene(self) -> None:
-        # BaodingMixin._setup_scene() (called via super()) spawns the balls after
-        # ShadowLiteEnv._setup_scene() returns. Set SDF approximation here so PhysX
-        # builds the scene with SDF collision, which TacSL force-field queries require.
-        super()._setup_scene()
-        # define_mesh_collision_properties applies the PhysX SDF schema correctly
-        # (UsdPhysics.MeshCollisionAPI + PhysxSDFMeshCollisionAPI). A raw
-        # MeshCollisionAPI(prim).GetApproximationAttr().Set("sdf") no-ops because
-        # the API is not Apply()'d first, so PhysX falls back to convexHull.
-        import omni.usd
-
-        from isaaclab.sim.schemas import SDFMeshPropertiesCfg, define_mesh_collision_properties
-        stage = omni.usd.get_context().get_stage()
-        sdf_cfg = SDFMeshPropertiesCfg(sdf_resolution=256)
-        for ball_name in ["ball1", "ball2"]:
-            for env_idx in range(self.num_envs):
-                mesh_path = f"/World/envs/env_{env_idx}/{ball_name}/geometry/mesh"
-                if stage.GetPrimAtPath(mesh_path).IsValid():
-                    define_mesh_collision_properties(mesh_path, sdf_cfg, stage=stage)
 
 
 class BaodingOrcaEnv(BaodingMixin, OrcaEnv):

@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import trimesh
 from collections.abc import Sequence
+from pathlib import Path
 
 from pxr import UsdGeom, UsdPhysics
 
@@ -157,7 +158,7 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
 
     episode_length_s = 10.0
 
-    reset_joint_pos_noise = 0.2
+    reset_joint_pos_noise = 0.1
     reset_joint_vel_noise = 0.0
 
     tacsl_contact_expr: str | None = "{ENV_REGEX_NS}/ball1"
@@ -172,9 +173,27 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
             pos=(0.0, 0.0, hand_height),
             #rot=(0.0, 0.0, -0.7071, 0.7071),
             #rot=(-0.7071, 0, 0.0, 0.7071), #upright pos 
-            rot=(0.0, 0.0, -0.7373, 0.6756),
-            #rot=(0.0, 0.0, -0.7933, 0.6087), 15 degree tilt forward facing up
-            joint_pos={".*": 0.0},
+            #rot=(0.0, 0.0, -0.7373, 0.6756),
+            rot=(0.0, 0.0, -0.7933, 0.6087), #15 degree tilt forward facing up
+            joint_pos={
+                # ── Knuckle abduction (J4) — fan FF/RF away from the middle finger.
+                #    FFJ4 axis is (0,-1,0) but RFJ4 axis is (0,1,0) (mirrored), so the
+                #    SAME numeric sign rotates them in opposite world directions = spread.
+                #    Limit is ±0.349 rad (±20°); flip both signs if they converge instead.
+                "rh_FFJ4":  -0.349,   # index fans out (toward thumb side)
+                "rh_RFJ4":  -0.349,   # ring fans out (toward little-finger side)
+                # ── Finger curl — open a bit for a larger ball ───────────────────
+                "rh_FFJ3":  0.65,    # MCP ~37°
+                "rh_FFJ2":  0.87,    # PIP ~50°
+                "rh_MFJ3":  0.65,    # MCP ~37°
+                "rh_MFJ2":  0.87,    # PIP ~50°
+                "rh_RFJ3":  0.65,    # MCP ~37°
+                "rh_RFJ2":  0.87,    # PIP ~50°
+                # ── Thumb (TH) — back off so it sits a bit more open, not tucked ─
+                "rh_THJ5":  0.4,     # rotate thumb inward ~23°
+                "rh_THJ4":  0.5,     # abduct across palm ~29°
+                "rh_THJ2":  0.35,    # flex ~20°
+            },
 
         #     joint_pos = {
         #     # ── Index finger (FF) — EXTENDED and spread outward ──────────────────
@@ -254,6 +273,17 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
     # 0.785 rad = 45°: first half of J2's range drives J2, second half drives J1.
     coupling_theta: float = 0.785
 
+    # GRDF coupling (experimental): derive the coupled J1/J2 commands from the
+    # phase couplings declared in the GRDF robot file instead of the
+    # coupling_theta split above. Same law today, but the coupling lives in the
+    # robot description (single source of truth, upgradeable from hardware
+    # sweeps without touching env code). Keep False until the Baoding A/B
+    # untangling runs finish.
+    use_grdf_coupling: bool = False
+    grdf_model_path: str = str(
+        Path(__file__).resolve().parents[5] / "grdf" / "models" / "shadowlite_touchlab.robot.yaml"
+    )
+
     actuated_joint_names = ['rh_FFJ4', 'rh_MFJ4', 'rh_RFJ4', 'rh_THJ5', 'rh_FFJ3', 'rh_MFJ3', 'rh_RFJ3', 'rh_THJ4', 'rh_FFJ2', 'rh_MFJ2', 'rh_RFJ2', 'rh_FFJ1', 'rh_MFJ1', 'rh_RFJ1', 'rh_THJ2', 'rh_THJ1']
 
 
@@ -266,7 +296,8 @@ class ShadowLiteEnvCfg(RotoEnvCfg):
     marker_cfg.prim_path = "/Visuals/ContactCfg"
 
     robot_contact_sensor_cfg = ContactSensorCfg(
-    prim_path="/World/envs/env_.*/Robot/rh_(ffdistal|mfdistal|rfdistal|thdistal)",
+    #prim_path="/World/envs/env_.*/Robot/rh_(ffdistal|mfdistal|rfdistal|thdistal)",
+    prim_path="/World/envs/env_.*/Robot/.*",
     update_period=0.0,
     history_length=1,
 )

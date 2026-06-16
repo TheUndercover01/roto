@@ -82,9 +82,9 @@ UPPER_LIMITS = np.array([
     1.5708,   # MFJ3
     1.5708,   # RFJ3
     1.2217,   # THJ4
-    1.5708,   # FFJ2 proxy
-    1.5708,   # MFJ2 proxy
-    1.5708,   # RFJ2 proxy
+    1.63,     # FFJ2 proxy
+    1.63,     # MFJ2 proxy
+    1.63,     # RFJ2 proxy
     0.6981,   # THJ2
     1.5708,   # THJ1
 ], dtype=np.float32)

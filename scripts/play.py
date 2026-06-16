@@ -102,6 +102,9 @@ def main():
 
     # Make environment (order: gymnasium Env -> FrameStack -> IsaacLab)
     env_cfg.num_eval_envs = 0 # don't need the visualization of eval envs
+    # Checkpoint trained with 4-ch binary ContactSensor tactile (not 64-ch TacSL).
+    if hasattr(env_cfg, "tacsl_contact_expr"):
+        env_cfg.tacsl_contact_expr = None
     env = make_env(agent_cfg, env_cfg, writer, args_cli)
 
     # Setup models

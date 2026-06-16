@@ -140,6 +140,30 @@ class RotoEnv(DirectRLEnv):
         # θ (rad): J2 must exceed this before J1 starts moving
         self.coupling_theta = getattr(cfg, "coupling_theta", 0.0)
 
+        # Optional GRDF-driven coupling: phase couplings from the robot
+        # description replace the hard-coded theta split in
+        # _handle_coupled_joints (cfg.use_grdf_coupling).
+        self.grdf_model = None
+        if getattr(cfg, "use_grdf_coupling", False):
+            from grdf import load_robot
+
+            self.grdf_model = load_robot(cfg.grdf_model_path)
+            coupling_by_joint = {jn: cname
+                                 for cname, c in self.grdf_model.couplings.items()
+                                 for jn in c.outputs}
+            # (coupling name, proxy slot = env J2 index, {joint name: env index})
+            self._grdf_groups = []
+            for drv_name in cfg.coupled_joint_map.values():
+                cname = coupling_by_joint[drv_name]
+                group_joints = self.grdf_model.couplings[cname].joint_names
+                self._grdf_groups.append((
+                    cname,
+                    self.robot.joint_names.index(drv_name),
+                    {jn: self.robot.joint_names.index(jn) for jn in group_joints},
+                ))
+            print(f"[GRDF] coupling from {cfg.grdf_model_path}: "
+                  f"{[g[0] for g in self._grdf_groups]}")
+
 
         # Action and state tensors
         self.actions = torch.zeros((self.num_envs, self.cfg.num_actions), device=self.device)
@@ -248,6 +272,16 @@ class RotoEnv(DirectRLEnv):
           proxy = 1.31  (75°) → J2 = 90°, J1 = 60°
           proxy = 1.57  (90°) → J2 = 90°, J1 = 90°
         """
+        if self.grdf_model is not None:
+            from grdf.couplings import joint_targets
+
+            for cname, proxy_idx, joint_idx in self._grdf_groups:
+                targets = joint_targets(self.grdf_model, cname,
+                                        self.joint_pos_cmd[:, proxy_idx], "phase")
+                for jn, q in targets.items():
+                    self.joint_pos_cmd[:, joint_idx[jn]] = q
+            return
+
         # proxy = what _pre_physics_step wrote for J2, in [0, J2_upper]
         proxy   = self.joint_pos_cmd[:, self.coupled_driver_indices]          # (N, 3)
         j2_upper = self.robot_joint_pos_upper_limits[self.coupled_driver_indices]    # (3,)

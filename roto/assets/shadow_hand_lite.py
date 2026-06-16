@@ -112,8 +112,8 @@ SHADOW_HAND_LITE_CFG = ArticulationCfg(
             effort_limit_sim={
                 # Finger flexion (incl. coupled J1/J2) — raised 0.7245/0.9 -> 2.5
                 # so the joint can follow the steep coupled ramps without saturating.
-                "rh_[MRF]FJ1": 2.5,
-                "rh_[MRF]FJ[23]": 2.5,
+                "rh_[MRF]FJ1": .9,
+                "rh_[MRF]FJ[23]": .9,
                 # Knuckle abduction/adduction — barely moves, left at baseline
                 "rh_[MRF]FJ4": 0.9,
                 # Thumb Base
@@ -131,12 +131,7 @@ SHADOW_HAND_LITE_CFG = ArticulationCfg(
                 "rh_[MRF]FJ[34]": 0.1,
                 "rh_THJ[1245]": 0.1,
             },
-            velocity_limit_sim={
-                # Override the URDF's 2.0 rad/s cap (which was saturating the
-                # coupled joints). Runtime — applied without USD reconversion.
-                "rh_[MRF]FJ[1-4]": 8.0,
-                "rh_THJ[1245]": 8.0,
-            },
+            
             # armature={
             #     # rotor inertia — smooths the response and reduces overshoot
             #     # (matches the real motor's inertia); tune up if still ringing.
